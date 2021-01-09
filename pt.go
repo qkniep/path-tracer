@@ -60,16 +60,20 @@ type rowRender struct {
 }
 
 func main() {
-	var width, height, samples = 1280, 720, 512
+	var width, height, samples = 1280, 720, 4
 	var cam = Ray{Vec3d{50, 52, 295.6}, Vec3d{0, -0.042612, -1}.norm()}  // cam pos, dir
 	var cos = math.Cos((62.5/360.0)*(2.0*math.Pi))
 	var cx = Vec3d{float64(width)*cos/float64(height), 0, 0}
 	var cy = cx.cross(cam.direction).norm().mul(cos)
 	var image = make([]Vec3d, width*height);
 
+	taskChannel := make(chan int, height)
+	for y := 0; y < height; y++ {
+		taskChannel <- y
+	}
 	rowChannel := make(chan rowRender, 8)
-	for offset := 0; offset < 4; offset++ {
-		go renderImageRowset(width, height, samples, offset, 4, cam, cx, cy, rowChannel)
+	for routine := 0; routine < 4; routine++ {
+		go renderImageRowset(width, height, samples, cam, cx, cy, rowChannel, taskChannel)
 	}
 
 	// collect rendered rows
@@ -80,6 +84,7 @@ func main() {
 		copy(image[(height-rr.y-1)*width:], rr.line)
 		fmt.Printf("\rRendering (%d spp) %.3f%%", samples*4, 100.0*float64(progress)/float64(height));
 	}
+	close(taskChannel)
 
 	f, err := os.Create("/tmp/image.ppm")
 	if err != nil {
@@ -94,11 +99,11 @@ func main() {
 	wrt.Flush()
 }
 
-func renderImageRowset(w, h, samples, yInit, yStep int, cam Ray, cx, cy Vec3d, rowChannel chan rowRender) {
+func renderImageRowset(w, h, samples int, cam Ray, cx, cy Vec3d, rowChannel chan rowRender, taskChannel chan int) {
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 	var r = Vec()
 
-	for y := yInit; y < h; y += yStep {
+	for y := range taskChannel {
 		line := make([]Vec3d, w)
 		for x := 0; x < w; x++ {
 			// use 2x2 subpixels
@@ -129,8 +134,8 @@ func renderImageRowset(w, h, samples, yInit, yStep int, cam Ray, cx, cy Vec3d, r
 }
 
 func radiance(r Ray, depth int, rng *rand.Rand, E float64) Vec3d {
-	var distance float64  // distance to intersection
-	var objID = 0     // id of intersected object
+	var distance float64 // distance to intersection
+	var objID int // id of intersected object
 	if !intersect(r, &distance, &objID) {
 		return Vec() // if miss, return black
 	}
@@ -152,6 +157,7 @@ func radiance(r Ray, depth int, rng *rand.Rand, E float64) Vec3d {
 			return obj.e.mul(E)  //R.R.
 		}
 	}
+
 	switch (obj.refl) {
 	case DIFF:  // ideal DIFFUSE reflection
 		r1, r2 := 2.0*math.Pi*rng.Float64(), rng.Float64()
