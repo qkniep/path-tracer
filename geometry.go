@@ -48,7 +48,7 @@ type Ray struct {
 type Sphere struct {
 	radius  float64
 	pos, e, c Vec3d   // position, emission, color
-	refl Refl_t     // reflection type (DIFFuse, SPECular, REFRactive)
+	refl refl     // reflection type (DIFFuse, SPECular, REFRactive)
 };
 
 // Solves t^2*d.d + 2*t*(o-p).d + (o-p).(o-p)-radius^2 = 0.
